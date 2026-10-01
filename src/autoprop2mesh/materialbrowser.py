@@ -95,7 +95,6 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
             return False
         self.target = (ent.name, ctrl.uid)
         self.selected = vmt.material_path(ctrl.material)[len("materials/"):-len(".vmt")]
-        self.scroll = 0.0
         self.wanted = []
         self._scroll_to_selected = True
         self._refresh()
@@ -128,7 +127,7 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
             self.scan_pos = 0
         else:
             self.items = self.candidates
-        self.scroll = 0.0
+        self.scroll["grid"] = 0.0
 
     def _passes(self, name):
         t = _translucent(name)
@@ -178,36 +177,32 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
                 return True
         return False
 
-    def scroll_at(self, mx, my, delta):
-        s = canvas.ui_scale()
-        self.scroll = max(0.0, self.scroll + delta * (_state["size"] + 20) * s * 0.5)
-
     # -- drawing ------------------------------------------------------------
     def draw_ui(self, cv, W, H):
         s = cv.s
         hover = self.hover
         size = _state["size"]
         bar_h = 62 * s
-        gx, gy, gw, gh = 2 * s, 2 * s, W - 14 * s, H - bar_h - 4 * s
+        gx, gy, gw, gh = 2 * s, 2 * s, W - 4 * s, H - bar_h - 4 * s
         tile = size * s
         label_h = 14 * s
         gap = 3 * s
-        cols = max(1, int((gw + gap) // (tile + gap)))
+        inner_w = gw - cv.scrollbar_width() - gap
+        cols = max(1, int((inner_w + gap) // (tile + gap)))
         cell_h = tile + label_h + gap
         items = self.items
         rows_total = (len(items) + cols - 1) // cols
-        max_scroll = max(0.0, rows_total * cell_h - gh)
         if self._scroll_to_selected and self.selected in items:
             r = items.index(self.selected) // cols
-            self.scroll = max(0.0, r * cell_h - gh / 2 + cell_h / 2)
+            self.scroll["grid"] = r * cell_h - gh / 2 + cell_h / 2
             self._scroll_to_selected = False
-        self.scroll = min(self.scroll, max_scroll)
-        first_row = int(self.scroll // cell_h)
-        last_row = int((self.scroll + gh) // cell_h) + 1
+        cv.rect(gx, gy, gw, gh, (0, 0, 0, 1))
+        scroll = cv.scroll_region("grid", gx, gy, gw, gh, rows_total * cell_h, cell_h * 0.5)
+        first_row = int(scroll // cell_h)
+        last_row = int((scroll + gh) // cell_h) + 1
 
         wanted = []
-        cv.rect(gx, gy, gw, gh, (0, 0, 0, 1))
-        cv.clip(gx, gy, gw, gh)
+        cv.clip(gx, gy, inner_w + gap, gh)
         for r in range(first_row, min(rows_total, last_row + 1)):
             for c in range(cols):
                 i = r * cols + c
@@ -215,7 +210,7 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
                     break
                 name = items[i]
                 x = gx + c * (tile + gap)
-                y = gy + r * cell_h - self.scroll
+                y = gy + r * cell_h - scroll
                 key = "%d:%s" % (size, name)
                 tex = _images.get(key)
                 if tex is not None:
@@ -242,10 +237,6 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
                 if 0 <= i < len(items) and not _images.has("%d:%s" % (size, items[i])):
                     wanted.append(items[i])
         self.wanted = wanted
-        if max_scroll > 0:
-            sb_h = max(20 * s, gh * gh / (gh + max_scroll))
-            sb_y = gy + (gh - sb_h) * (self.scroll / max_scroll)
-            cv.rect(W - 10 * s, sb_y, 6 * s, sb_h, canvas.BORDER)
 
         # ---- bottom bar ----------------------------------------------------
         by = H - bar_h
@@ -258,7 +249,7 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
         cv.button("%dx%d" % (size, size), x + 36 * s, row1, 80 * s, 20 * s, ("size",), hover=hover == ("size",))
         x += 130 * s
         cv.text("Filter:", x, row1 + 4 * s, 11)
-        cv.field(_state["filter"], x + 42 * s, row1, 240 * s, 20 * s, ("focus", "filter"),
+        cv.field(self.edits["filter"], "filter", x + 42 * s, row1, 240 * s, 20 * s,
                  focused=self.focus == "filter", placeholder="just start typing")
         x += 300 * s
         cv.text(self.selected or "(no selection)", x, row1 + 4 * s, 11, canvas.TEXT, max_w=320 * s)
@@ -276,7 +267,7 @@ class P2M_OT_material_browser(browserbase.BrowserModal, bpy.types.Operator):
         bw = 90 * s
         cv.button("Apply", W - 2 * bw - 20 * s, row1, bw, 22 * s, ("ok",), active=True, hover=hover == ("ok",))
         cv.button("Cancel", W - bw - 10 * s, row1, bw, 22 * s, ("cancel",), hover=hover == ("cancel",))
-        cv.text("Double-click or Enter to apply, Esc to cancel", W - 2 * bw - 20 * s, row2 + 4 * s, 10, canvas.DIM,
+        cv.text("Double-click or Enter to apply, Esc to cancel, middle mouse to scroll", W - 2 * bw - 20 * s, row2 + 4 * s, 10, canvas.DIM,
                 max_w=2 * bw + 10 * s, align="RIGHT")
 
 

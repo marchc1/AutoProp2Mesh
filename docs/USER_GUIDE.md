@@ -108,6 +108,11 @@ The browser opens over the 3D viewport and is laid out like Hammer's:
 - **Full path:** shows the selected model's path.
 - **Keys:** **OK** or **Enter** uses the selection. **Cancel**, **Esc** or right-click closes the browser without changes.
 
+Both browsers share these controls:
+
+- **Scrolling:** use the mouse wheel, or drag the scrollbars (click a scrollbar's track to jump there). You can also hold the **middle mouse button** and move the mouse up or down: the further you move, the faster it scrolls. A quick middle-click without moving keeps this on until your next click. **Page Up** / **Page Down** also work.
+- **Text fields:** click to place the cursor, drag or **Shift+arrows** to select, and double-click to select everything. **Ctrl+A** selects all, and **Ctrl+C** / **Ctrl+X** / **Ctrl+V** copy, cut and paste. **Ctrl+arrows** and **Ctrl+Backspace** / **Ctrl+Delete** work word by word, and **Home** / **End** jump to either end. You can select and copy the model browser's **Full path**, too.
+
 Thumbnails appear as they finish rendering, usually within a second, and are reused for the rest of the session. While the browser is open, the viewport's own header, toolbar and sidebar are hidden. They come back when it closes.
 
 If a model can't be loaded, the entity shows `error.mdl` and the panel says why. If even `error.mdl` is unavailable, it shows a yellow **!** made of blocks. The model path you typed is still what gets exported.

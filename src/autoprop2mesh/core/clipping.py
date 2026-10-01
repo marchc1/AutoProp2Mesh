@@ -47,7 +47,18 @@ def clip(soup, normal, dist):
     return np.concatenate(out) if out else soup[:0]
 
 
+def drop_degenerate(soup, eps=1e-10):
+    """Removes zero-area triangles. Clipping creates them when a vertex lies
+    exactly on the plane (all three corners collapse onto one point); they
+    cover nothing, but break mesh topology once vertices are welded."""
+    if len(soup) == 0:
+        return soup
+    p = soup[:, :, :3]
+    area2 = np.linalg.norm(np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]), axis=1)
+    return soup[area2 > eps]
+
+
 def clip_all(soup, planes):
     for normal, dist in planes:
         soup = clip(soup, normal, dist)
-    return soup
+    return drop_degenerate(soup) if planes else soup

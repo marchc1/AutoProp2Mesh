@@ -156,15 +156,23 @@ def _sync_bodygroups(obj, data):
 def _fill_mesh(me, soup, mat_index, flat):
     """soup columns: pos(3) normal(3) uv(2)."""
     me.clear_geometry()
+    if len(soup) == 0:
+        return
+    # Weld identical positions so smoothing/editing behave.
+    rounded = np.round(soup[:, :, 0:3], 5)
+    unique, inverse = np.unique(rounded.reshape(-1, 3), axis=0, return_inverse=True)
+    tri_verts = inverse.reshape(-1, 3)
+    # A face may not use a vertex twice (welding can collapse thin or cut
+    # triangles); Blender's normal code crashes on such faces.
+    ok = (tri_verts[:, 0] != tri_verts[:, 1]) & (tri_verts[:, 1] != tri_verts[:, 2]) & (tri_verts[:, 0] != tri_verts[:, 2])
+    soup, mat_index, tri_verts = soup[ok], mat_index[ok], tri_verts[ok]
     m = len(soup)
     if m == 0:
         return
-    corners = soup.reshape(-1, soup.shape[2])
-    pos = corners[:, 0:3]
-    # Weld identical positions so smoothing/editing behave.
-    rounded = np.round(pos, 5)
-    unique, inverse = np.unique(rounded, axis=0, return_inverse=True)
+    used, inverse = np.unique(tri_verts.reshape(-1), return_inverse=True)
+    unique = unique[used]
     inverse = inverse.reshape(-1)
+    corners = soup.reshape(-1, soup.shape[2])
     me.vertices.add(len(unique))
     me.vertices.foreach_set("co", unique.astype(np.float32).reshape(-1))
     me.loops.add(m * 3)
@@ -175,15 +183,16 @@ def _fill_mesh(me, soup, mat_index, flat):
     uv = me.uv_layers.get("UVMap") or me.uv_layers.new(name="UVMap")
     uv.data.foreach_set("uv", corners[:, 6:8].astype(np.float32).reshape(-1))
     me.update(calc_edges=True)
+    # Belt and braces: never hand Blender's normal code invalid topology.
+    if me.validate(clean_customdata=False) or len(me.loops) != m * 3:
+        return
     if not flat:
         me.polygons.foreach_set("use_smooth", np.ones(m, dtype=bool))
         normals = corners[:, 3:6]
         lengths = np.linalg.norm(normals, axis=1, keepdims=True)
-        normals = normals / np.maximum(lengths, 1e-12)
-        try:
+        normals = np.where(lengths > 1e-12, normals / np.maximum(lengths, 1e-12), (0.0, 0.0, 1.0))
+        if np.isfinite(normals).all():
             me.normals_split_custom_set(normals.tolist())
-        except Exception:
-            pass
 
 
 def rebuild(obj, refresh_bodygroups=False, force=False):

@@ -173,9 +173,8 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
             f = f.rpartition("/")[0]
         _state["folder"] = folder
         self.selected = current if current and content.get_fs().exists(current) else ""
-        self.tree_scroll = 0
-        self.grid_scroll = 0.0
         self.wanted = []
+        self.edits["path"] = browserbase.TextEdit(self.selected, readonly=True)
         self._scroll_to_selected = bool(self.selected)
         self._scroll_tree_to_folder = True
         self._refresh()
@@ -196,7 +195,7 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
         if tokens:
             files = [p for p in files if all(t in p for t in tokens)]
         self.grid = sorted(files)
-        self.grid_scroll = 0.0
+        self.scroll["grid"] = 0.0
 
     def _tree_rows(self):
         rows = []
@@ -270,15 +269,6 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
         tree = (pad, pad + 84 * s, left_w - 2 * pad, H - 84 * s - 110 * s - pad)
         return pad, left_w, info_h, grid, tree
 
-    def scroll_at(self, mx, my, delta):
-        s = canvas.ui_scale()
-        W, H = self.region.width, self.region.height - self.top_inset()
-        _pad, left_w, _info_h, grid, tree = self._metrics(W, H, s)
-        if mx < left_w:
-            self.tree_scroll = max(0, self.tree_scroll + int(delta * 3))
-        elif my < grid[1] + grid[3]:
-            self.grid_scroll = max(0.0, self.grid_scroll + delta * (THUMB_SIZE + 22) * s * 0.5)
-
     # -- drawing ------------------------------------------------------------
     def draw_ui(self, cv, W, H):
         s = cv.s
@@ -288,7 +278,7 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
         # ---- left: filter, options, tree, full path, buttons --------------
         cv.rect(0, 0, left_w, H, canvas.PANEL)
         cv.text("Model Browser", pad, pad, 13)
-        cv.field(_state["filter"], pad, pad + 24 * s, left_w - 2 * pad, 22 * s, ("focus", "filter"),
+        cv.field(self.edits["filter"], "filter", pad, pad + 24 * s, left_w - 2 * pad, 22 * s,
                  focused=self.focus == "filter", placeholder="Filter (just start typing)")
         cv.checkbox("Check subfolders for files", _state["subfolders"], pad, pad + 56 * s, ("subfolders",))
 
@@ -296,15 +286,17 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
         cv.frame(tx, ty, tw, th, canvas.BORDER)
         rows = self._tree_rows()
         row_h = 18 * s
-        visible = max(1, int(th // row_h))
         if self._scroll_tree_to_folder:
             idx = next((i for i, r in enumerate(rows) if r[0] == _state["folder"]), 0)
-            self.tree_scroll = max(0, idx - visible // 2)
+            self.scroll["tree"] = idx * row_h - th / 2 + row_h / 2
             self._scroll_tree_to_folder = False
-        self.tree_scroll = max(0, min(self.tree_scroll, max(0, len(rows) - visible)))
+        off = cv.scroll_region("tree", tx, ty, tw, th, len(rows) * row_h, row_h * 3)
+        tw -= cv.scrollbar_width()
+        first = int(off // row_h)
+        visible = int(th // row_h) + 2
         cv.clip(tx, ty, tw, th)
-        for i, (folder, depth, has_dirs) in enumerate(rows[self.tree_scroll:self.tree_scroll + visible + 1]):
-            y = ty + i * row_h
+        for i, (folder, depth, has_dirs) in enumerate(rows[first:first + visible]):
+            y = ty + (first + i) * row_h - off
             x = tx + 4 * s + depth * 14 * s
             if folder == _state["folder"]:
                 cv.rect(tx, y, tw, row_h, canvas.ACCENT)
@@ -327,31 +319,34 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
 
         by = ty + th + 8 * s
         cv.text("Full path:", pad, by, 11, canvas.DIM)
-        cv.field(self.selected, pad, by + 16 * s, left_w - 2 * pad, 22 * s, ("noop",))
+        path_edit = self.edits["path"]
+        if path_edit.text != self.selected and self.focus != "path":
+            path_edit.set_text(self.selected)
+        cv.field(path_edit, "path", pad, by + 16 * s, left_w - 2 * pad, 22 * s, focused=self.focus == "path")
         bw = (left_w - 3 * pad) / 2
         cv.button("OK", pad, H - pad - 26 * s, bw, 26 * s, ("ok",), active=True, hover=hover == ("ok",))
         cv.button("Cancel", 2 * pad + bw, H - pad - 26 * s, bw, 26 * s, ("cancel",), hover=hover == ("cancel",))
 
         # ---- right: thumbnail grid -----------------------------------------
         cv.text("%d models" % len(self.grid), gx, pad + 4 * s, 11, canvas.DIM)
-        cv.text("Click to select, double-click or Enter to use, Esc to cancel, wheel to scroll",
+        cv.text("Click to select, double-click or Enter to use, Esc to cancel. Wheel, scrollbar or middle mouse to scroll",
                 gx, pad + 4 * s, 10, canvas.DIM, max_w=gw, align="RIGHT")
         tile = THUMB_SIZE * s
         label_h = 16 * s
         gap = 6 * s
-        cols = max(1, int((gw + gap) // (tile + gap)))
+        inner_w = gw - cv.scrollbar_width() - gap
+        cols = max(1, int((inner_w + gap) // (tile + gap)))
         cell_h = tile + label_h + gap
         rows_total = (len(self.grid) + cols - 1) // cols
-        max_scroll = max(0.0, rows_total * cell_h - gh)
         if self._scroll_to_selected and self.selected in self.grid:
             r = self.grid.index(self.selected) // cols
-            self.grid_scroll = max(0.0, r * cell_h - gh / 2 + cell_h / 2)
+            self.scroll["grid"] = r * cell_h - gh / 2 + cell_h / 2
             self._scroll_to_selected = False
-        self.grid_scroll = min(self.grid_scroll, max_scroll)
-        first_row = int(self.grid_scroll // cell_h)
-        last_row = int((self.grid_scroll + gh) // cell_h) + 1
+        grid_scroll = cv.scroll_region("grid", gx, gy, gw, gh, rows_total * cell_h, cell_h * 0.5)
+        first_row = int(grid_scroll // cell_h)
+        last_row = int((grid_scroll + gh) // cell_h) + 1
         wanted = []
-        cv.clip(gx, gy, gw, gh)
+        cv.clip(gx, gy, inner_w + gap, gh)
         for r in range(first_row, min(rows_total, last_row + 1)):
             for c in range(cols):
                 i = r * cols + c
@@ -359,7 +354,7 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
                     break
                 path = self.grid[i]
                 x = gx + c * (tile + gap)
-                y = gy + r * cell_h - self.grid_scroll
+                y = gy + r * cell_h - grid_scroll
                 selected = path == self.selected
                 tex = _images.get("thumb:" + path)
                 cv.rect(x, y, tile, tile, (0.2, 0.2, 0.2, 1))
@@ -384,10 +379,6 @@ class P2M_OT_model_browser(browserbase.BrowserModal, bpy.types.Operator):
                 if 0 <= i < len(self.grid) and not _images.has("thumb:" + self.grid[i]):
                     wanted.append(self.grid[i])
         self.wanted = wanted
-        if max_scroll > 0:
-            bar_h = max(20 * s, gh * gh / (gh + max_scroll))
-            bar_y = gy + (gh - bar_h) * (self.grid_scroll / max_scroll)
-            cv.rect(gx + gw + 2 * s, bar_y, 4 * s, bar_h, canvas.BORDER)
 
         # ---- bottom: tabs ----------------------------------------------------
         iy = H - info_h - pad

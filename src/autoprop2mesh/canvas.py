@@ -37,10 +37,16 @@ def ui_scale():
 
 
 class Canvas:
-    def __init__(self, region_height, top_offset=0):
+    def __init__(self, region_height, top_offset=0, scroll=None):
         self.h = region_height - top_offset  # drawing space starts below the offset
         self.s = ui_scale()
         self.hotspots = []
+        self.scroll = scroll if scroll is not None else {}
+        self.scrollers = {}     # key -> scroll region info (for the modal)
+        self.fields = {}        # key -> (text origin x, font size) of text fields
+        self.hover = None
+        self.active_bar = None
+        self._clip = None
         self._color = gpu.shader.from_builtin("UNIFORM_COLOR")
         self._image = gpu.shader.from_builtin("IMAGE")
 
@@ -106,14 +112,25 @@ class Canvas:
         return s + "..."
 
     def clip(self, x, y, w, h):
+        self._clip = (x, y, w, h)
         gpu.state.scissor_test_set(True)
         gpu.state.scissor_set(int(x), int(self._y(y, h)), max(0, int(w)), max(0, int(h)))
 
     def unclip(self):
+        self._clip = None
         gpu.state.scissor_test_set(False)
 
     # -- interaction --------------------------------------------------------
     def hot(self, x, y, w, h, action):
+        """Registers a clickable rect, cut to the current clip rect so things
+        scrolled out of view cannot be clicked."""
+        if self._clip is not None:
+            cx, cy, cw, ch = self._clip
+            x0, y0 = max(x, cx), max(y, cy)
+            x1, y1 = min(x + w, cx + cw), min(y + h, cy + ch)
+            if x1 <= x0 or y1 <= y0:
+                return
+            x, y, w, h = x0, y0, x1 - x0, y1 - y0
         self.hotspots.append((x, y, w, h, action))
 
     @staticmethod
@@ -142,15 +159,100 @@ class Canvas:
         self.hot(x, y, b + 5 * self.s + w, b, action)
         return b + 5 * self.s + w
 
-    def field(self, value, x, y, w, h, action, focused=False, placeholder=""):
+    def field(self, edit, key, x, y, w, h, focused=False, placeholder="", size=11):
+        """An editable single-line text field (state in a browserbase.TextEdit)."""
+        s = self.s
         self.rect(x, y, w, h, FIELD)
         self.frame(x, y, w, h, (0.45, 0.55, 0.9, 1) if focused else BORDER)
-        shown = value if value or focused else placeholder
-        tw = self.text(shown, x + 5 * self.s, y + (h - 11 * self.s) / 2 - 1, 11,
-                       TEXT if value else DIM, max_w=w - 10 * self.s)
-        if focused:
-            self.rect(x + 6 * self.s + tw, y + 3 * self.s, 1, h - 6 * self.s, TEXT)
-        self.hot(x, y, w, h, action)
+        pad = 5 * s
+        inner_x, inner_w = x + pad, w - 2 * pad
+        text = edit.text
+        ty = y + (h - size * s) / 2 - 1
+        if not text and not focused:
+            self.text(placeholder, inner_x, ty, size, DIM, max_w=inner_w)
+        else:
+            # Keep the cursor in view by scrolling the text horizontally.
+            cursor_x = self.text_width(text[:edit.cursor], size)
+            if cursor_x - edit.view > inner_w - 2:
+                edit.view = cursor_x - inner_w + 2
+            elif cursor_x - edit.view < 0:
+                edit.view = cursor_x
+            edit.view = max(0.0, min(edit.view, max(0.0, self.text_width(text, size) - inner_w + 2)))
+            origin = inner_x - edit.view
+            prev_clip = self._clip
+            self.clip(inner_x, y, inner_w, h)
+            sel = edit.selection()
+            if sel and focused:
+                sx0 = origin + self.text_width(text[:sel[0]], size)
+                sx1 = origin + self.text_width(text[:sel[1]], size)
+                self.rect(sx0, y + 3 * s, sx1 - sx0, h - 6 * s, (0.25, 0.4, 0.8, 1))
+            self.text(text, origin, ty, size, TEXT)
+            if focused:
+                self.rect(origin + cursor_x, y + 3 * s, max(1, int(s)), h - 6 * s, TEXT)
+            if prev_clip:
+                self.clip(*prev_clip)
+            else:
+                self.unclip()
+        self.fields[key] = (inner_x - edit.view, size)
+        self.hot(x, y, w, h, ("focus", key))
+
+    @staticmethod
+    def index_at(text, x, size):
+        """Character index nearest to x pixels into `text`."""
+        blf.size(FONT, size * ui_scale())
+        best, best_d = 0, abs(x)
+        for i in range(1, len(text) + 1):
+            d = abs(blf.dimensions(FONT, text[:i])[0] - x)
+            if d < best_d:
+                best, best_d = i, d
+        return best
+
+    def readout(self, value, x, y, w, h, size=11):
+        """A read-only, non-interactive text box."""
+        self.rect(x, y, w, h, FIELD)
+        self.frame(x, y, w, h, BORDER)
+        self.text(value, x + 5 * self.s, y + (h - size * self.s) / 2 - 1, size, TEXT, max_w=w - 10 * self.s)
+
+    # -- scrolling ------------------------------------------------------------
+    SCROLLBAR = 12
+
+    def scrollbar_width(self):
+        return self.SCROLLBAR * self.s
+
+    def scroll_region(self, key, x, y, w, h, content_h, wheel_step):
+        """Declares a scrollable area; draws its scrollbar along the right
+        edge (inside the rect) and returns the clamped scroll offset."""
+        max_scroll = max(0.0, content_h - h)
+        off = min(max(0.0, self.scroll.get(key, 0.0)), max_scroll)
+        self.scroll[key] = off
+        info = {"rect": (x, y, w, h), "max": max_scroll, "step": wheel_step}
+        sbw = self.scrollbar_width()
+        track = (x + w - sbw, y, sbw, h)
+        self.rect(*track, (0.12, 0.12, 0.12, 1))
+        if max_scroll > 0:
+            thumb_h = max(24 * self.s, h * h / content_h)
+            thumb_y = y + (h - thumb_h) * (off / max_scroll)
+            info["track"] = track
+            info["thumb"] = (thumb_y, thumb_h)
+            active = self.active_bar == key
+            hovered = self.hover == ("scrollbar", key)
+            color = (0.62, 0.62, 0.62, 1) if active else (0.48, 0.48, 0.48, 1) if hovered else (0.36, 0.36, 0.36, 1)
+            self.rect(track[0] + 2 * self.s, thumb_y + 1, sbw - 4 * self.s, thumb_h - 2, color)
+            self.hot(*track, ("scrollbar", key))
+        self.scrollers[key] = info
+        return off
+
+    def autoscroll_marker(self, x, y):
+        """The anchor shown while middle-mouse autoscrolling."""
+        s = self.s
+        r = 9 * s
+        self.rect(x - r, y - r, 2 * r, 2 * r, (0.1, 0.1, 0.1, 0.85))
+        self.frame(x - r, y - r, 2 * r, 2 * r, TEXT)
+        self.rect(x - 1, y - 1, 2, 2, TEXT)
+        for dy in (-1, 1):
+            for k in range(3):
+                w = (5 - 2 * k) * s
+                self.rect(x - w / 2, y + dy * (r - (2 + k) * s) - 0.5, w, 1, TEXT)
 
 
 class TextureCache:
