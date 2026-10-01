@@ -1,6 +1,8 @@
 # AutoProp2Mesh
 
-A Blender 4.2 – 5.2 extension for building [Prop2Mesh](https://github.com/ACF-Team/Prop2Mesh) entities in Blender and exporting them as AdvDupe2 (revision 5) dupes for Garry's Mod.
+A Blender 4.2 – 5.2 extension for building [Prop2Mesh](https://github.com/ACF-Team/Prop2Mesh) entities in Blender and exporting them as AdvDupe2 (revision 5) dupes for Garry's Mod. 
+
+This was built with Claude Opus 5.5 as a test of its capabilities; I'm only going to semi-maintain this project for my personal use cases, but PR's are welcome if something breaks or you want something
 
 **New here? Read the [User Guide](docs/USER_GUIDE.md).**
 
