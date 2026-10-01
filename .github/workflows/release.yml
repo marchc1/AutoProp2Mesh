@@ -1,0 +1,48 @@
+name: Build release
+
+# Every push to the default branch builds the extension zip and publishes it
+# as a GitHub release tagged YYYY.MM.DD.N (commit date, then commit count).
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: the commit count is part of the version
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the add-on compiles
+        run: python -m compileall -q src/autoprop2mesh
+
+      - name: Build extension zip
+        id: build
+        run: python tools/build_extension.py --out build
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.build.outputs.release }}
+          name: AutoProp2Mesh ${{ steps.build.outputs.release }}
+          target_commitish: ${{ github.sha }}
+          files: ${{ steps.build.outputs.zip }}
+          body: |
+            Automatic build of ${{ github.sha }}.
+
+            **Install:** in Blender 4.2 or newer, go to Edit > Preferences > Get Extensions, open the ⌄ menu (top right), choose **Install from Disk…**, and pick the zip below.
+
+            Extension version inside the zip: `${{ steps.build.outputs.manifest }}`

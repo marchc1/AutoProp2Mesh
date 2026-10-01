@@ -6,11 +6,8 @@ A Blender 4.2 – 5.2 extension for building [Prop2Mesh](https://github.com/ACF-
 
 ## Install
 
-1. Build the extension zip, or use the prebuilt one in `dist/`:
-   ```
-   blender --command extension build --source-dir src/autoprop2mesh --output-dir dist
-   ```
-2. In Blender, go to **Edit > Preferences > Get Extensions**, open the drop-down menu, choose **Install from Disk…**, and pick `dist/autoprop2mesh-<version>.zip`.
+1. Download `autoprop2mesh-<version>.zip` from the latest release on the **Releases** page. Or build it yourself with `python tools/build_extension.py`, which writes it to `build/`.
+2. In Blender, go to **Edit > Preferences > Get Extensions**, open the drop-down menu, choose **Install from Disk…**, and pick the zip.
 3. In the extension's preferences:
    - The Garry's Mod folder is auto-detected through Steam.
    - Add any extra content folders, e.g. a shared legacy addons tree. A folder counts as content if it holds `models/` or `materials/`, and folders of such folders also work.
@@ -75,10 +72,21 @@ src/autoprop2mesh/
   export.py        gather + coordinate conversion + export operator
   browser.py, ops.py, ui.py, props.py, prefs.py
 tests/blender_integration.py   end-to-end test (needs a GMod install)
+tests/clip_stress.py           clip plane stress test (needs a GMod install)
+tools/build_extension.py       builds the release zip (used by the GitHub workflow)
 ```
 
 ## Testing
 
+These need a Garry's Mod install:
+
 ```
 blender -b --factory-startup --python tests/blender_integration.py
+blender -b --factory-startup --python tests/clip_stress.py
 ```
+
+## Releases
+
+Every push to `main` (or `master`) runs `.github/workflows/release.yml`. It builds the zip with `tools/build_extension.py` and publishes it as a GitHub release named after the commit date (UTC) and the commit count, for example `2026.10.01.42`.
+
+Blender only accepts three-part semantic versions in the manifest, so the extension version inside the zip is written as `2026.1001.42`. It carries the same date and count, and every later build still compares as newer.
