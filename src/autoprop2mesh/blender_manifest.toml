@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "autoprop2mesh"
+version = "0.1.0"
+name = "AutoProp2Mesh"
+tagline = "Build Prop2Mesh entities in Blender and export AdvDupe2 dupes"
+maintainer = "marchc1"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+tags = ["Import-Export", "Game Engine"]
+
+[permissions]
+files = "Read Garry's Mod content and write AdvDupe2 files"
