@@ -90,11 +90,25 @@ This is the model of the `sent_prop2mesh` itself, the thing you grab with the ph
 
 | Button | What it does |
 |---|---|
-| 📁 **Model Browser** | A Hammer-style browser: type words into the filter (for example `props_c17 drum`), click a model to see a rendered preview, its triangle count, materials and which addon it comes from, then press **OK** |
+| 📁 **Model Browser** | A Hammer-style browser (see below) |
 | 🔍 **Search** | A quick type-ahead search over every model path |
 | ⟳ **Reload** | Reloads the model from the game files |
 
 You can also type a path straight into the field, such as `models/hunter/plates/plate.mdl`.
+
+### The model browser
+
+The browser opens over the 3D viewport and is laid out like Hammer's:
+
+- **Folder tree (left):** every folder with models in it, from all your mounted content. Click **+** / **−** to expand or collapse a folder, and click a folder's name to show its models. The number on the right is how many models are inside it, including its subfolders.
+- **Check subfolders for files:** shows the models of the selected folder *and* everything below it.
+- **Filter:** just start typing. Words such as `drum c17` show only models whose path contains all of them. The filter searches below the selected folder; select **All Models** at the top of the tree to search everything.
+- **Thumbnail grid:** click anywhere on a thumbnail to select it, and double-click to use it straight away. Scroll with the mouse wheel. The browser opens on the current model's folder, scrolled to it.
+- **Tabs (bottom):** **Info** shows a larger preview, triangle and vertex counts and where the model comes from. **Materials** lists its materials, and **Body Groups** lists its body groups and their options.
+- **Full path:** shows the selected model's path.
+- **Keys:** **OK** or **Enter** uses the selection. **Cancel**, **Esc** or right-click closes the browser without changes.
+
+Thumbnails appear as they finish rendering, usually within a second, and are reused for the rest of the session. While the browser is open, the viewport's own header, toolbar and sidebar are hidden. They come back when it closes.
 
 If a model can't be loaded, the entity shows `error.mdl` and the panel says why. If even `error.mdl` is unavailable, it shows a yellow **!** made of blocks. The model path you typed is still what gets exported.
 
@@ -112,7 +126,7 @@ Each entity has a list of controllers. Use **+** and **−** to add or remove th
 |---|---|
 | **Name** | Shown in Blender menus as `"Name"` instead of `#0`. Also exported as the controller's name |
 | **Color** | Tints the material. Alpha below 1 makes the controller translucent |
-| **Material** | Any Source material path, for example `phoenix_storms/metalset_1-2`. 🔍 searches every material you have |
+| **Material** | Any Source material path, for example `phoenix_storms/metalset_1-2`. 📁 opens the material browser (see below), and 🔍 is a quick type-ahead search |
 | **UV Scale** | Texture size in Source units per repeat. 0 uses Prop2Mesh's default (48). See [§12](#12-limits-and-things-prop2mesh-ignores) |
 | **Bump** | Turn on for materials with normal maps, so they light correctly |
 
@@ -121,6 +135,18 @@ The buttons under the controller settings:
 - **Attach Selected** attaches the selected objects to this controller.
 - **Select Parts** selects everything attached to this controller.
 - The part count shows how many objects are attached.
+
+### The material browser
+
+The 📁 button next to a controller's material opens a browser laid out like Hammer's texture browser:
+
+- **Grid:** every material, shown as its texture with the name on a blue bar. Click a tile to select it, and double-click to apply it straight away. Scroll with the mouse wheel.
+- **Size:** cycles the tile size between 64×64, 128×128 and 256×256.
+- **Filter:** just start typing, for example `metal floor`.
+- **Selection:** the selected material's name and its texture resolution are shown in the bottom bar.
+- **Opaque / Translucent:** untick one to hide that kind of material. The check runs in the background, so the list fills in as it goes.
+- **Only used materials:** shows only materials already used by controllers in this file.
+- **Keys:** **Apply** or **Enter** sets the material. **Cancel**, **Esc** or right-click closes the browser without changes.
 
 Removing a controller doesn't delete its parts. They become unassigned, lose the controller look, and are skipped on export until you attach them to another controller.
 
@@ -233,7 +259,9 @@ Each entity owns the parts below it, up to the next entity. Parts under a child 
 |---|---|
 | **Material Preview** | The controller material: texture × colour, with alpha, using Prop2Mesh's texture mapping |
 | **Solid**, Color: **Texture** | The same texture × colour, without lighting effects. Fast |
-| **Solid**, Color: **Material** | Only each controller's flat colour |
+| **Solid**, Color: **Material** | Only flat colours: each controller's colour, and each game model's average texture colour |
+
+Solid view only draws textures when its colour is set to **Texture**. Blender's default is **Material**, so the add-on switches a viewport to **Texture** the first time you add an entity or model part, or attach parts. If you've chosen a colour mode yourself, it is left alone. The **P2M** sidebar tab also has a **Solid Color** setting, to switch back and forth.
 
 Change these in the **Viewport Shading** popover at the top right of the 3D view (the small ⌄ next to the shading buttons).
 
@@ -295,5 +323,6 @@ These come from Prop2Mesh itself:
 | A model inside an old workshop item takes a few seconds to appear | Old `.bin` workshop items are compressed and are unpacked in memory the first time. It's quick after that |
 | Ctrl+P doesn't show the Prop2Mesh entries | Make sure the **entity is the active (last selected)** object. If another add-on also changes Ctrl+P, use **Object > Parent** instead |
 | A part isn't exported | Check the **Part** panel. It needs a controller, and its entity must be included in the export |
+| Solid view shows grey or flat colours instead of textures | Set **Solid Color** to **Texture** in the **P2M** sidebar tab (or in Blender's Viewport Shading popover) |
 | Solid view is black after enabling the add-on | Switch the viewport shading once, or reopen the file. The preview textures are rebuilt automatically |
 | I added new addons in Garry's Mod | Click **Rescan Content** (⟳ next to Export in the sidebar) |

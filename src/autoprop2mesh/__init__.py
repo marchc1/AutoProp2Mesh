@@ -7,9 +7,10 @@ except ImportError:  # imported outside Blender (e.g. testing autoprop2mesh.core
     bpy = None
 
 if bpy is not None:
-    from . import browser, content, export, modelparts, ops, prefs, props, sync, ui
+    from . import browser, content, export, materialbrowser, modelparts, ops, prefs, props, sync, ui
 
-    _class_groups = (prefs.classes, props.classes, browser.classes, ops.classes, export.classes, ui.classes)
+    _class_groups = (prefs.classes, props.classes, browser.classes, materialbrowser.classes, ops.classes,
+                     export.classes, ui.classes)
 
 
 def _start_content():

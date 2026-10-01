@@ -225,5 +225,6 @@ def decode(data, max_size=1024):
 
     info = TextureInfo()
     info.width, info.height, info.flags, info.format = w, h, flags, hi_fmt
+    info.full_width, info.full_height = width, height
     info.has_alpha = bool(flags & (0x1000 | 0x2000)) or name in ("DXT3", "DXT5", "DXT1_ONEBITALPHA")
     return info, np.ascontiguousarray(rgba, dtype=np.float32)

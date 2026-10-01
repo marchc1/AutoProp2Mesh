@@ -301,9 +301,12 @@ open(os.path.join(S, "blender_body.bin"), "wb").write(gmod_lzma.decompress(open(
 
 # --- model browser preview ------------------------------------------------
 try:
-    browser.render_preview("models/props_c17/oildrum001.mdl")
-    pv = browser._pcoll.get("models/props_c17/oildrum001.mdl")
-    check(pv is not None and tuple(pv.image_size) == (browser.PREVIEW_SIZE, browser.PREVIEW_SIZE), "browser preview icon created")
+    rgba = browser.preview_rgba("models/props_c17/oildrum001.mdl")
+    check(rgba.shape == (browser.PREVIEW_SIZE, browser.PREVIEW_SIZE, 4) and rgba[..., 3].max() == 1.0,
+          "browser preview rendered")
+    from autoprop2mesh import materialbrowser
+    mrgba, full = materialbrowser.thumbnail("phoenix_storms/metalset_1-2", 128)
+    check(full == (512, 512) and mrgba.shape[0] <= 128, "material browser thumbnail (%s)" % (full,))
 except Exception:
     traceback.print_exc()
     check(False, "browser preview")

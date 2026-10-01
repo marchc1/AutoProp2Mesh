@@ -28,6 +28,11 @@ class P2M_PT_main(bpy.types.Panel):
         row.operator("object.p2m_add_entity", icon="ADD", text="Add Entity")
         row.operator("object.p2m_add_model_part", icon="MESH_ICOSPHERE", text="Add Model Part")
         layout.prop(context.scene.p2m, "unit_scale", text="Units / BU")
+        shading = getattr(context.space_data, "shading", None)
+        if shading is not None and shading.type == "SOLID":
+            row = layout.row(align=True)
+            row.label(text="Solid Color:")
+            row.prop(shading, "color_type", text="")
         row = layout.row(align=True)
         row.operator(P2M_OT_export_advdupe2.bl_idname, icon="EXPORT", text="Export AdvDupe2")
         row.operator("p2m.rebuild_content", icon="FILE_REFRESH", text="")
@@ -83,6 +88,8 @@ class P2M_PT_entity(bpy.types.Panel):
         col.prop(ctrl, "color")
         row = col.row(align=True)
         row.prop(ctrl, "material")
+        op = row.operator("p2m.material_browser", text="", icon="FILEBROWSER")
+        op.entity, op.uid = ent.name, ctrl.uid
         op = row.operator("p2m.search_material", text="", icon="VIEWZOOM")
         op.entity, op.uid = ent.name, ctrl.uid
         row = col.row()

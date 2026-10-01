@@ -1,7 +1,7 @@
 import bpy
 from bpy.props import EnumProperty, IntProperty, StringProperty
 
-from . import content, entities, materials, modelparts, prefs, props, sync
+from . import browser, content, entities, materialbrowser, materials, modelparts, prefs, props, sync
 
 
 def _entity_from(op, context):
@@ -33,6 +33,7 @@ class P2M_OT_add_entity(bpy.types.Operator):
         for o in context.selected_objects:
             o.select_set(False)
         obj = entities.create_entity(context, location=context.scene.cursor.location.copy())
+        content.show_textures_in_solid_view(context)
         obj.select_set(True)
         context.view_layer.objects.active = obj
         if obj.p2m.model_status:
@@ -54,6 +55,7 @@ class P2M_OT_add_model_part(bpy.types.Operator):
         for o in context.selected_objects:
             o.select_set(False)
         obj = modelparts.create_model_part(context, location=context.scene.cursor.location.copy())
+        content.show_textures_in_solid_view(context)
         obj.select_set(True)
         context.view_layer.objects.active = obj
         if obj.p2m.model_status:
@@ -201,6 +203,7 @@ class P2M_OT_attach(bpy.types.Operator):
             obj.p2m.controller_uid = uid
             count += 1
         sync.full_sync(context.scene)
+        content.show_textures_in_solid_view(context)
         if not count:
             self.report({"WARNING"}, "Select the objects to attach (and the entity last)")
             return {"CANCELLED"}
@@ -355,6 +358,8 @@ class P2M_OT_rebuild_content(bpy.types.Operator):
     def execute(self, context):
         prefs._detected.clear()
         clear_search_cache()
+        browser.invalidate()
+        materialbrowser.invalidate()
         materials.clear_cache()
         content.start_build(force=True)
         self.report({"INFO"}, "Rescanning Garry's Mod content in the background")

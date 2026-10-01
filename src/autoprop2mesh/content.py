@@ -189,6 +189,34 @@ def material_info(vmt_path):
     return info
 
 
+def average_color(img):
+    """Linear RGBA average of an image (its pixels are sRGB encoded)."""
+    w, h = img.size
+    if not w or not h:
+        return (0.8, 0.8, 0.8, 1.0)
+    px = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    r, g, b, _a = px.reshape(-1, 4).mean(0)
+
+    def lin(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return (lin(r), lin(g), lin(b), 1.0)
+
+
+def show_textures_in_solid_view(context):
+    """Solid view only draws textures with Color: Texture. Switch viewports
+    still on Blender's default (Material) so P2M textures show up."""
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return
+    for area in screen.areas:
+        if area.type != "VIEW_3D":
+            continue
+        shading = area.spaces.active.shading
+        if shading.color_type == "MATERIAL":
+            shading.color_type = "TEXTURE"
+
+
 def _link(nt, a, b):
     nt.links.new(a, b)
 
@@ -246,6 +274,8 @@ def source_material(candidates):
         tex.image = info.image
         tex.location = (-400, 200)
         _link(nt, tex.outputs["Color"], bsdf.inputs["Base Color"])
+        # Solid view with Color: Material draws this flat colour.
+        mat.diffuse_color = average_color(info.image)
         if info.translucent and _principled_alpha(bsdf):
             _link(nt, tex.outputs["Alpha"], _principled_alpha(bsdf))
             set_blend(mat, True)
