@@ -199,7 +199,7 @@ class _Reader:
         return s
 
 
-def _bytes_to_str(obj):
+def _bytes_to_str(obj, memo=None):
     """Convert decoded byte strings to str where they are valid UTF-8."""
     if isinstance(obj, bytes):
         try:
@@ -207,8 +207,16 @@ def _bytes_to_str(obj):
         except UnicodeDecodeError:
             return obj
     if isinstance(obj, dict):
-        return {(k if isinstance(k, TableKey) else _bytes_to_str(k)): _bytes_to_str(v)
-                for k, v in obj.items()}
+        # tables can be referenced more than once, even from inside themselves
+        if memo is None:
+            memo = {}
+        out = memo.get(id(obj))
+        if out is not None:
+            return out
+        out = memo[id(obj)] = {}
+        for k, v in obj.items():
+            out[k if isinstance(k, TableKey) else _bytes_to_str(k, memo)] = _bytes_to_str(v, memo)
+        return out
     return obj
 
 

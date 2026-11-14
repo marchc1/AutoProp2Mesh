@@ -12,7 +12,7 @@ from collections import OrderedDict
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from . import content, props
 from .core import clipping, studiomdl, vfs
@@ -108,7 +108,8 @@ def _plane_mesh(size):
     return me
 
 
-def add_clip_plane(context, part):
+def add_clip_plane(context, part, normal=None, point=None, rebuild_part=True):
+    """normal/point place the plane in the part's local space (default: through its origin, keeping +Z)."""
     size = max(max(part.dimensions) / max(max(part.scale), 1e-6), 1e-3) * 0.75 or 1.0
     me = _plane_mesh(size)
     plane = bpy.data.objects.new("Clip Plane", me)
@@ -123,7 +124,11 @@ def add_clip_plane(context, part):
     plane.display_type = "WIRE"
     plane.show_in_front = True
     plane.hide_render = True
-    rebuild(part)
+    if normal is not None:
+        rot = Vector((0.0, 0.0, 1.0)).rotation_difference(Vector(normal).normalized())
+        plane.matrix_basis = Matrix.Translation(Vector(point)) @ rot.to_matrix().to_4x4()
+    if rebuild_part:
+        rebuild(part)
     return plane
 
 
@@ -144,6 +149,11 @@ def _sync_bodygroups(obj, data):
     if want == have:
         return False
     choices = p.bodygroup_choices()
+    pending = p.pending_bodygroup
+    if pending >= 0:
+        choices = [(pending // max(base, 1)) % max(len(models), 1) for _name, base, models in data.bodyparts]
+        have = want
+        p.pending_bodygroup = -1
     p.bodygroups.clear()
     for i, (name, base, options) in enumerate(want):
         bg = p.bodygroups.add()
@@ -293,13 +303,16 @@ def check_all():
                 rebuild(obj)
 
 
-def create_model_part(context, location=None, model=DEFAULT_MODEL):
+def create_model_part(context, location=None, model=DEFAULT_MODEL, name="P2M Model Part", collection=None,
+                      bodygroup=-1):
+    """bodygroup is a P2M body group mask, or -1 for the model's defaults."""
     me = bpy.data.meshes.new(MESH_PREFIX + "Model Part")
-    obj = bpy.data.objects.new("P2M Model Part", me)
-    context.collection.objects.link(obj)
+    obj = bpy.data.objects.new(name, me)
+    (collection or context.collection).objects.link(obj)
     if location is not None:
         obj.location = location
     obj.p2m.is_model_part = True
+    obj.p2m.pending_bodygroup = bodygroup
     obj.p2m.model = model
     if not obj.p2m.bodygroups and not len(obj.data.polygons):
         rebuild(obj, refresh_bodygroups=True)

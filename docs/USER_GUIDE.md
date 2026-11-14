@@ -1,6 +1,6 @@
 # AutoProp2Mesh User Guide
 
-AutoProp2Mesh lets you build [Prop2Mesh](https://github.com/ACF-Team/Prop2Mesh) contraptions in Blender and export them as an AdvDupe2 file that you paste in Garry's Mod.
+AutoProp2Mesh lets you build [Prop2Mesh](https://github.com/ACF-Team/Prop2Mesh) contraptions in Blender and export them as an AdvDupe2 file that you paste in Garry's Mod. It can also import the Prop2Mesh entities from an existing dupe ([§11](#importing-a-dupe)).
 
 It works with Blender 4.2 and newer.
 
@@ -302,6 +302,29 @@ After exporting, Blender's status bar reports the number of entities, controller
 3. Paste.
 
 The server's own limits still apply, for example how many Prop2Mesh entities you may spawn.
+
+### Importing a dupe
+
+**File > Import > AdvDupe2 Prop2Mesh (.txt)**, or **Import AdvDupe2** in the sidebar, loads the Prop2Mesh entities from any AdvDupe2 file, whether it was made in game or exported by this add-on. They come in ready to edit and export again:
+
+- Each `sent_prop2mesh` becomes an entity with its model and controllers (name, colour, material, UV scale, bump).
+- OBJ parts become mesh parts, with their smoothing angle and **Render Inside**.
+- Model parts and holograms become model parts, with their scale, body groups, flat shading and clip planes.
+- Entities parented to each other in the dupe are parented in Blender. Entities parented to something else (a prop, a gate) are placed where they were.
+- A controller that is offset or scaled in game gets an empty (named after the controller) holding that offset and scale, with its parts below it. On export the scale is baked into the parts, and the UV scale is adjusted to keep the texture size.
+
+Everything else in the dupe (props, wire, ACF and so on) is skipped for now, and the status bar says how many of each were skipped.
+
+| Option | Default | What it does |
+|---|---|---|
+| **New Collection** | On | Puts the import in a new collection named after the file |
+| **Units per BU** | 1.00 | Same as the sidebar setting |
+
+Some things can't come across, and the import warns about each one:
+
+- **Primitive parts** (from the Primitive addon) are skipped.
+- **Hidden submodels** of a model part show in Blender, and are exported too.
+- **Unevenly scaled controllers** keep their shape, but their textures stretch differently after export.
 
 ### Starfall mesh tree (client-side meshes)
 

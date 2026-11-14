@@ -108,6 +108,7 @@ class P2M_ObjectProps(bpy.types.PropertyGroup):
     # -- model part (a Prop2Mesh "prop" part: exported as model + placement)
     is_model_part: BoolProperty(default=False)
     bodygroups: CollectionProperty(type=P2M_Bodygroup)
+    pending_bodygroup: IntProperty(default=-1)  # imported mask, applied once the model's body groups are known
     model_flat: BoolProperty(
         name="Flat Shading", default=False, update=_model_part_changed,
         description="Use flat shading instead of the model's normals (Prop2Mesh vsmooth)",
@@ -149,6 +150,8 @@ class P2M_ObjectProps(bpy.types.PropertyGroup):
         return out
 
     def bodygroup_mask(self):
+        if not self.bodygroups and self.pending_bodygroup >= 0:
+            return self.pending_bodygroup
         return sum(c * bg.base for c, bg in zip(self.bodygroup_choices(), self.bodygroups))
 
     # -- bookkeeping (sync) ----------------------------------------------

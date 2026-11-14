@@ -55,10 +55,10 @@ def add_controller(entity, name=""):
     return ctrl
 
 
-def create_entity(context, location=None, model=DEFAULT_MODEL, name="P2M Entity"):
+def create_entity(context, location=None, model=DEFAULT_MODEL, name="P2M Entity", collection=None):
     me = bpy.data.meshes.new("P2M Entity")
     obj = bpy.data.objects.new(name, me)
-    context.collection.objects.link(obj)
+    (collection or context.collection).objects.link(obj)
     if location is not None:
         obj.location = location
     obj.p2m.is_entity = True

@@ -1,5 +1,5 @@
 """AutoProp2Mesh: build Prop2Mesh (sent_prop2mesh) entities in Blender and
-export them as AdvDupe2 dupes for Garry's Mod."""
+export them as AdvDupe2 dupes for Garry's Mod (or import them from one)."""
 
 try:
     import bpy
@@ -7,10 +7,10 @@ except ImportError:  # imported outside Blender (e.g. testing autoprop2mesh.core
     bpy = None
 
 if bpy is not None:
-    from . import browser, content, export, materialbrowser, modelparts, ops, prefs, props, sync, ui
+    from . import browser, content, export, importer, materialbrowser, modelparts, ops, prefs, props, sync, ui
 
     _class_groups = (prefs.classes, props.classes, browser.classes, materialbrowser.classes, ops.classes,
-                     export.classes, ui.classes)
+                     export.classes, importer.classes, ui.classes)
 
 
 def _start_content():

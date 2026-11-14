@@ -1,6 +1,6 @@
 # AutoProp2Mesh
 
-A Blender 4.2 – 5.2 extension for building [Prop2Mesh](https://github.com/ACF-Team/Prop2Mesh) entities in Blender and exporting them as AdvDupe2 (revision 5) dupes for Garry's Mod. 
+A Blender 4.2 – 5.2 extension for building [Prop2Mesh](https://github.com/ACF-Team/Prop2Mesh) entities in Blender and exporting them as AdvDupe2 (revision 5) dupes for Garry's Mod. It can also import the Prop2Mesh entities from existing dupes. 
 
 This was built with Claude Opus 5.5 as a test of its capabilities; I'm only going to semi-maintain this project for my personal use cases, but PR's are welcome if something breaks or you want something
 
@@ -26,6 +26,7 @@ The first content scan takes about 10 seconds and runs in the background. After 
 | Attach geometry | Select the objects, then the entity last, and press **Ctrl+P > Attach mesh to Controller …** |
 | Nest entities | Parent an entity to another entity (normal Ctrl+P). The parenting is exported |
 | Export | **File > Export > AdvDupe2 Prop2Mesh (.txt)**. It defaults to `garrysmod/data/advdupe2` |
+| Import | **File > Import > AdvDupe2 Prop2Mesh (.txt)**. Loads the Prop2Mesh entities of any dupe, with their controllers, mesh parts and model parts. Other entities are skipped for now. See the [User Guide](docs/USER_GUIDE.md#importing-a-dupe) |
 | Export for Starfall | **File > Export > Starfall Mesh Tree**. Writes OBJ meshes and a manifest into a local clone of a GitHub repository; a Starfall chip builds them client-side. See the [User Guide](docs/USER_GUIDE.md#starfall-mesh-tree-client-side-meshes) |
 
 - **Parts:** any mesh, curve, surface, metaball or text object below an entity is a part, including indirect children. A part uses its own controller, or inherits the one set on the nearest object above it.
@@ -65,7 +66,8 @@ src/autoprop2mesh/
     archives.py    VPK, GMA and legacy .bin readers (no extraction to disk)
     studiomdl.py   MDL/VVD/VTX loader      vtf.py  VTF decoder     vmt.py  VMT parser
     ad2.py         AdvDupe2 rev 5 codec    gmod_lzma.py  util.Compress format
-    p2m.py         Prop2Mesh part lists (mesh + model parts) and dupe entities
+    dupe.py        entities of a decoded dupe, any class
+    p2m.py         Prop2Mesh part lists (mesh + model parts) and dupe entities, both ways
     starfall.py    OBJ writer for Starfall's mesh parser (used by tree.py)
     tree.py        Starfall mesh tree: pivots, merged meshes, manifest.json and the loader chip
     clipping.py    port of P2M's applyClippingPlane
@@ -75,9 +77,11 @@ src/autoprop2mesh/
   modelparts.py    model parts, body groups, clip planes
   sync.py          keeps parts bound to their controller
   export.py        gather + coordinate conversion + export operator
+  importer.py      AdvDupe2 import (entity class -> builder)
   browser.py, ops.py, ui.py, props.py, prefs.py
 tests/blender_integration.py   end-to-end test (needs a GMod install)
 tests/clip_stress.py           clip plane stress test (needs a GMod install)
+tests/dupe_import.py           import round trip, optionally on real dupes (needs a GMod install)
 tests/starfall_tree.py          Starfall mesh tree export test (no GMod install needed)
 tools/build_extension.py       builds the release zip (used by the GitHub workflow)
 ```
@@ -89,7 +93,10 @@ These need a Garry's Mod install:
 ```
 blender -b --factory-startup --python tests/blender_integration.py
 blender -b --factory-startup --python tests/clip_stress.py
+blender -b --factory-startup --python tests/dupe_import.py
 ```
+
+`dupe_import.py` also takes dupe paths after `--`. It imports each one, exports it again, and checks every part lands where Prop2Mesh draws it in game.
 
 The Starfall mesh tree test does not need Garry's Mod:
 

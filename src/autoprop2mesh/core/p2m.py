@@ -62,15 +62,35 @@ class ModelPartSpec:
         self.vinside = vinside
 
 
+class MeshPartSpec:
+    """An OBJ part read from a dupe. positions are in the part's own space
+    (part scale applied), triangles are counter-clockwise."""
+
+    def __init__(self, name, positions, triangles, pos=(0, 0, 0), ang=(0, 0, 0), vsmooth=None, vinside=False):
+        self.name = name
+        self.positions = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
+        self.triangles = np.asarray(triangles, dtype=np.int64).reshape(-1, 3)
+        self.pos = Vector(*pos)
+        self.ang = Angle(*ang)
+        self.vsmooth = vsmooth
+        self.vinside = vinside
+
+
 class ControllerSpec:
+    # scale, clips and link* are only filled in by the importer; export bakes them into the parts
     def __init__(self, color=(255, 255, 255, 255), material=DEFAULT_MATERIAL,
-                 uvs=0, bump=False, name="", parts=()):
+                 uvs=0, bump=False, name="", parts=(), scale=(1, 1, 1), clips=(),
+                 linkpos=(0, 0, 0), linkang=(0, 0, 0)):
         self.color = tuple(int(max(0, min(255, round(c)))) for c in color)
         self.material = material or DEFAULT_MATERIAL
         self.uvs = int(max(0, min(512, uvs)))
         self.bump = bool(bump)
         self.name = name or ""
         self.parts = list(parts)
+        self.scale = Vector(*scale)
+        self.clips = [(Vector(*n), float(d)) for n, d in clips]
+        self.linkpos = Vector(*linkpos)
+        self.linkang = Angle(*linkang)
 
 
 class EntitySpec:
@@ -274,3 +294,239 @@ def build_dupe(entities, export_names=True):
         "Description": "Exported by AutoProp2Mesh",
     }
     return dupe, report
+
+
+# --------------------------------------------------------------------------
+# Reading dupes
+# --------------------------------------------------------------------------
+
+ENTITY_CLASSES = ("sent_prop2mesh", "sent_prop2mesh_legacy")
+
+
+def _number(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _triple(v, default=(0.0, 0.0, 0.0)):
+    """A Vector/Angle from the dupe table or from GMod JSON ("[x y z]", "{p y r}")."""
+    if isinstance(v, (Vector, Angle)):
+        return tuple(v)
+    if isinstance(v, bytes):
+        v = v.decode("utf-8", "replace")
+    if isinstance(v, str):
+        parts = v.strip().strip("[]{}").split()
+        if len(parts) == 3:
+            try:
+                return tuple(float(p) for p in parts)
+            except ValueError:
+                pass
+        return default
+    if isinstance(v, dict):
+        keys = (1, 2, 3) if 1 in v else ("x", "y", "z") if "x" in v else ("p", "y", "r")
+        try:
+            return tuple(float(v[k]) for k in keys)
+        except (KeyError, TypeError, ValueError):
+            return default
+    if isinstance(v, (list, tuple)) and len(v) == 3:
+        try:
+            return tuple(float(c) for c in v)
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
+def _custom_key(k):
+    # P2M looks custom meshes up with tonumber(objd)
+    try:
+        return str(int(float(k)))
+    except (TypeError, ValueError):
+        return str(k)
+
+
+def _lua_array(t):
+    """The 1..n part of a table, the way Lua's # sees it."""
+    if isinstance(t, list):
+        return list(t)
+    out = []
+    while True:
+        v = t.get(str(len(out) + 1))
+        if v is None:
+            v = t.get(len(out) + 1)
+        if v is None:
+            return out
+        out.append(v)
+
+
+def decode_partlist(blob):
+    """(list of part dicts, {objd: obj text}) from a compressed part list."""
+    if isinstance(blob, str):
+        blob = blob.encode("utf-8")   # ad2.decode turns blobs that happen to be valid UTF-8 into str
+    table = json.loads(gmod_lzma.decompress(blob).decode("utf-8", "replace"))
+    if isinstance(table, list):
+        return table, {}
+    if not isinstance(table, dict):
+        raise ValueError("part list is not a table")
+    custom = table.get("custom")
+    if isinstance(custom, list):
+        custom = {str(i + 1): v for i, v in enumerate(custom)}
+    elif isinstance(custom, dict):
+        custom = {_custom_key(k): v for k, v in custom.items()}
+    else:
+        custom = {}
+    return _lua_array(table), custom
+
+
+def parse_obj(text, invert=False):
+    """Positions and counter-clockwise triangles from OBJ text, read like P2M
+    reads it: only `v` and `f`, faces as fans, clockwise is the front."""
+    verts = []
+    tris = []
+    for line in text.split("\n"):
+        tokens = line.split()
+        if not tokens:
+            continue
+        head = tokens[0]
+        if head == "v" and len(tokens) >= 4:
+            try:
+                verts.append((float(tokens[1]), float(tokens[2]), float(tokens[3])))
+            except ValueError:
+                verts.append((0.0, 0.0, 0.0))
+        elif head == "f" and len(tokens) >= 4:
+            face = []
+            n = len(verts)
+            for tok in tokens[1:]:
+                try:
+                    i = int(tok.split("/")[0])
+                except ValueError:
+                    face = None
+                    break
+                i = i - 1 if i > 0 else n + i
+                if not 0 <= i < n:
+                    face = None
+                    break
+                face.append(i)
+            if not face:
+                continue
+            a = face[0]
+            for b, c in zip(face[1:-1], face[2:]):
+                tris.append((a, b, c) if invert else (a, c, b))
+    return np.array(verts, dtype=np.float64).reshape(-1, 3), np.array(tris, dtype=np.int64).reshape(-1, 3)
+
+
+def _clips(entries):
+    out = []
+    if not isinstance(entries, (list, dict)):
+        return out
+    for c in _lua_array(entries):
+        if not isinstance(c, dict):
+            continue
+        n = np.array(_triple(c.get("n")))
+        length = np.linalg.norm(n)
+        if length < 1e-12:
+            continue
+        out.append((tuple(n / length), _number(c.get("d")) / length))
+    return out
+
+
+def _count(notes, key):
+    notes[key] = notes.get(key, 0) + 1
+
+
+def read_parts(blob, notes):
+    """Mesh and model parts of one controller. Anything skipped is counted in notes."""
+    parts, custom = decode_partlist(blob)
+    out = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        pos = _triple(part.get("pos"))
+        ang = _triple(part.get("ang"))
+        scale = _triple(part.get("scale"), (1.0, 1.0, 1.0))
+        vinside = bool(_number(part.get("vinside")))
+        model = part.get("prop") or part.get("holo")
+        if model:
+            model = str(model).replace("\\", "/").lower()
+            if part.get("submodels"):
+                _count(notes, "submodels")
+            name = model.rsplit("/", 1)[-1]
+            out.append(ModelPartSpec(
+                name[:-4] if name.endswith(".mdl") else name, model, pos, ang, scale,
+                _clips(part.get("clips")) + _clips(part.get("iclips")),
+                int(_number(part.get("bodygroup"))), _number(part.get("vsmooth")) == 1, vinside))
+        elif part.get("objd") is not None:
+            text = custom.get(_custom_key(part.get("objd")))
+            if not isinstance(text, str):
+                _count(notes, "missing_obj")
+                continue
+            positions, triangles = parse_obj(text, bool(_number(part.get("vinvert"))))
+            if len(triangles) == 0:
+                _count(notes, "empty_obj")
+                continue
+            name = str(part.get("objn") or "mesh")
+            if name.lower().endswith(".obj"):
+                name = name[:-4]
+            smooth = _number(part.get("vsmooth"))
+            out.append(MeshPartSpec(name, positions * scale, triangles, pos, ang, smooth or None, vinside))
+        elif part.get("primitive"):
+            _count(notes, "primitive")
+        else:
+            _count(notes, "unknown")
+    return out
+
+
+def _read_controller(c, partlists, notes):
+    col = c.get("col") if isinstance(c.get("col"), dict) else {}
+    clips = []
+    if isinstance(c.get("clips"), dict):
+        for clip in c["clips"].values():
+            if isinstance(clip, dict) and all(i in clip for i in (1, 2, 3, 4)):
+                clips.append(((_number(clip[1]), _number(clip[2]), _number(clip[3])), _number(clip[4])))
+    if clips:
+        _count(notes, "controller_clips")
+    parts = []
+    blob = partlists.get(str(c.get("crc")))
+    if blob is not None:
+        try:
+            parts = read_parts(blob, notes)
+        except Exception:
+            _count(notes, "bad_partlist")
+    return ControllerSpec(
+        color=[_number(col.get(k), 255) for k in "rgba"],
+        material=str(c.get("mat") or DEFAULT_MATERIAL),
+        uvs=min(abs(int(np.floor(_number(c.get("uvs"))))), 512),
+        bump=bool(c.get("bump")), name=str(c.get("name") or ""), parts=parts,
+        scale=_triple(c.get("scale"), (1.0, 1.0, 1.0)), clips=clips,
+        linkpos=_triple(c.get("linkpos")), linkang=_triple(c.get("linkang")))
+
+
+def read_entity(dent, notes):
+    """EntitySpec for a P2M entity from core.dupe, keyed by its dupe index."""
+    mods = dent.table.get("EntityMods")
+    data = mods.get("prop2mesh") if isinstance(mods, dict) else None
+    controllers = []
+    if isinstance(data, dict):
+        lists = data.get(2) if isinstance(data.get(2), dict) else {}
+        lists = {str(k): v for k, v in lists.items()}
+        ctrls = data.get(1)
+        for c in (_lua_array(ctrls) if isinstance(ctrls, dict) else ()):
+            if isinstance(c, dict):
+                controllers.append(_read_controller(c, lists, notes))
+    return EntitySpec(dent.index, dent.model, dent.pos, dent.ang, dent.parent, controllers)
+
+
+_NOTE_TEXT = {
+    "primitive": "%d primitive part(s) skipped (they need the Primitive addon)",
+    "submodels": "%d model part(s) hide submodels in game; Blender shows (and exports) the whole model",
+    "missing_obj": "%d mesh part(s) skipped: their OBJ data is missing from the dupe",
+    "empty_obj": "%d mesh part(s) skipped: no faces",
+    "unknown": "%d part(s) of an unknown kind skipped",
+    "bad_partlist": "%d controller part list(s) could not be read",
+    "controller_clips": "%d controller(s) use controller clip planes, which are not imported",
+}
+
+
+def note_warnings(notes):
+    return [_NOTE_TEXT[k] % v for k, v in notes.items() if v and k in _NOTE_TEXT]

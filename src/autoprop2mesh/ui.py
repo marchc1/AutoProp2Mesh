@@ -2,6 +2,7 @@ import bpy
 
 from . import content, entities, modelparts, props, sync
 from .export import P2M_OT_export_advdupe2, P2M_OT_export_starfall_tree
+from .importer import P2M_OT_import_advdupe2
 
 
 class P2M_UL_controllers(bpy.types.UIList):
@@ -33,6 +34,8 @@ class P2M_PT_main(bpy.types.Panel):
             row = layout.row(align=True)
             row.label(text="Solid Color:")
             row.prop(shading, "color_type", text="")
+        row = layout.row(align=True)
+        row.operator(P2M_OT_import_advdupe2.bl_idname, icon="IMPORT", text="Import AdvDupe2")
         row = layout.row(align=True)
         row.operator(P2M_OT_export_advdupe2.bl_idname, icon="EXPORT", text="Export AdvDupe2")
         row.operator(P2M_OT_export_starfall_tree.bl_idname, icon="EXPORT", text="Export Starfall Meshes")
@@ -274,7 +277,9 @@ _keymaps = []
 
 def register():
     from .export import menu_func_export
+    from .importer import menu_func_import
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.VIEW3D_MT_add.append(menu_add)
     bpy.types.VIEW3D_MT_object_parent.append(menu_object_parent)
     kc = bpy.context.window_manager.keyconfigs.addon
@@ -287,9 +292,11 @@ def register():
 
 def unregister():
     from .export import menu_func_export
+    from .importer import menu_func_import
     for km, kmi in _keymaps:
         km.keymap_items.remove(kmi)
     _keymaps.clear()
     bpy.types.VIEW3D_MT_object_parent.remove(menu_object_parent)
     bpy.types.VIEW3D_MT_add.remove(menu_add)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
