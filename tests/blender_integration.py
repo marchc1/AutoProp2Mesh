@@ -319,12 +319,21 @@ if props_parts:
     check("objd" not in pp and pp.get("bodygroup") == mp.p2m.bodygroup_mask() > 0 and pp.get("vsmooth") == 1 and len(pp.get("clips", [])) == 2,
           "prop entry: bodygroup %s, vsmooth %s, %d clips" % (pp.get("bodygroup"), pp.get("vsmooth"), len(pp.get("clips", []))))
     vec = lambda s_: np.array([float(x) for x in s_.strip("[]{}").split()])
+    # the ammo crate is on P2M's model fixer list: scale axes swapped, clip normals turned by
+    # Angle(0, -90, 0), then the whole model turned about the part's up axis by 90
+    check(modelparts.fix_rule(mp) == "all", "ammo crate is a model P2M turns in game")
     data = studiomdl.load(content.read, MODEL, BG_CHOICES)
-    soup = data.positions[data.triangles].astype(np.float64) * vec(pp["scale"])
+    sx, sy, sz = vec(pp["scale"])
+    soup = data.positions[data.triangles].astype(np.float64) * (sx, sz, sy)
+    a90 = source_matrix((0, 0, 0), (0, -90, 0))[:3, :3]
     for clip in pp["clips"]:
-        soup = clipping.clip(soup, vec(clip["n"]), clip["d"])
+        soup = clipping.clip(soup, a90 @ vec(clip["n"]), clip["d"])
     R = source_matrix((0, 0, 0), vec(pp["ang"]))[:3, :3]
-    local = soup.reshape(-1, 3) @ R.T + vec(pp["pos"])
+    ux, uy, uz = R[:, 2]
+    up90 = np.array([[ux * ux, ux * uy - uz, ux * uz + uy],   # Source's MatrixBuildRotationAboutAxis(up, 90)
+                     [ux * uy + uz, uy * uy, uy * uz - ux],
+                     [ux * uz - uy, uy * uz + ux, uz * uz]])
+    local = soup.reshape(-1, 3) @ (up90 @ R).T + vec(pp["pos"])
     world_p2m = (M @ np.c_[local, np.ones(len(local))].T).T[:, :3]
     world_blender = np.array([mp.matrix_world @ v.co for v in mp.data.vertices])
     d1 = max(np.min(np.linalg.norm(world_blender - w, axis=1)) for w in world_p2m)

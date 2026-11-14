@@ -157,6 +157,7 @@ class P2M_PT_part(bpy.types.Panel):
             col = layout.column()
             col.prop(obj.p2m, "model_flat")
             col.prop(obj.p2m, "render_inside")
+            col.prop(obj.p2m, "model_holo")
         elif sync.is_geometry(obj):
             col = layout.column()
             col.prop(obj.p2m, "smooth_mode")

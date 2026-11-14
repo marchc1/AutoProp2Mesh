@@ -26,6 +26,7 @@ class ModelData:
         self.uvs = None         # (N, 2) float32, Blender convention (v up)
         self.triangles = None   # (M, 3) int32, CCW
         self.tri_material = None  # (M,) int32 index into `materials`
+        self.tri_submesh = None   # (M,) int32, 1-based mesh number in util.GetModelMeshes order
         self.materials = []     # list of candidate lists of VMT paths
         self.name = ""
         # [(bodypart name, base, [submodel names])] - for body group UIs
@@ -234,10 +235,12 @@ def load(read, model_path, bodygroups=()):
     data.bodygroup_mask = bodygroup_mask(data.bodyparts, data.bodygroups)
     all_tris = []
     all_mats = []
+    all_subs = []
     mat_slots = {}
-    for material, tris in meshes:
+    for submesh, (material, tris) in enumerate(meshes, 1):
         if not len(tris):
             continue
+        all_subs.append(np.full(len(tris), submesh, dtype=np.int32))
         if tris.max() >= len(positions):
             raise ModelError("triangle references missing vertex")
         tex = info["skin0"][material] if material < len(info["skin0"]) else material
@@ -256,6 +259,7 @@ def load(read, model_path, bodygroups=()):
             data.uvs = np.zeros((0, 2), np.float32)
             data.triangles = np.zeros((0, 3), np.int32)
             data.tri_material = np.zeros(0, np.int32)
+            data.tri_submesh = np.zeros(0, np.int32)
             return data
         raise ModelError("model has no LOD 0 geometry")
 
@@ -268,6 +272,7 @@ def load(read, model_path, bodygroups=()):
     uv[:, 1] = 1.0 - uv[:, 1]
     data.uvs = uv
     data.tri_material = np.concatenate(all_mats)
+    data.tri_submesh = np.concatenate(all_subs)
     return data
 
 

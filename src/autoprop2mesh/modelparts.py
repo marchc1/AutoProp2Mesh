@@ -15,11 +15,12 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 from . import content, props
-from .core import clipping, studiomdl, vfs
+from .core import clipping, modelfix, studiomdl, vfs
 
 DEFAULT_MODEL = "models/hunter/blocks/cube025x025x025.mdl"
 MESH_PREFIX = "P2M Part: "
 
+_fixer = None
 _models = OrderedDict()   # (path, choices) -> ModelData
 _MODEL_CACHE_SIZE = 64
 _signatures = {}          # object pointer -> last built signature
@@ -41,8 +42,29 @@ def _load(path, choices):
 
 
 def clear_cache():
+    global _fixer
     _models.clear()
     _signatures.clear()
+    _fixer = None
+
+
+def _get_fixer():
+    global _fixer
+    if _fixer is None:
+        fs = content.get_fs(wait=False)
+        if fs is None:
+            return modelfix.Fixer()
+        text = fs.read(modelfix.LUA_PATH)
+        if text is None:
+            print("AutoProp2Mesh: %s not found in the game content; models P2M turns in game will preview unturned"
+                  % modelfix.LUA_PATH)
+        _fixer = modelfix.Fixer(text.decode("utf-8", "replace") if text else "")
+    return _fixer
+
+
+def fix_rule(obj):
+    """P2M's model fixer rule for a model part (None for most models)."""
+    return _get_fixer().rule(vfs.FileSystem.normalize(obj.p2m.model or ""))
 
 
 # --------------------------------------------------------------------------
@@ -184,8 +206,12 @@ def add_clip_plane(context, part, normal=None, point=None, rebuild_part=True):
 
 def _signature(obj):
     planes = tuple((tuple(round(c, 5) for c in n), round(d, 5)) for n, d in local_planes(obj))
-    return (vfs.FileSystem.normalize(obj.p2m.model or ""), tuple(obj.p2m.bodygroup_choices()),
-            obj.p2m.model_flat, planes, round(props.unit_scale(), 6))
+    sig = (vfs.FileSystem.normalize(obj.p2m.model or ""), tuple(obj.p2m.bodygroup_choices()),
+           obj.p2m.model_flat, planes, round(props.unit_scale(), 6))
+    if fix_rule(obj) is not None:
+        # turned models depend on the scale (P2M swaps its axes)
+        sig += (tuple(round(c, 5) for c in obj.scale), obj.p2m.model_holo)
+    return sig
 
 
 def _sync_bodygroups(obj, data):
@@ -251,6 +277,56 @@ def _fill_mesh(me, soup, mat_index, flat):
             me.normals_split_custom_set(normals.tolist())
 
 
+def _soup(data, sel, positions, normals):
+    tris = data.triangles[sel]
+    if not len(tris):
+        return np.zeros((0, 3, 9))
+    return np.concatenate([
+        positions[tris], normals[tris], data.uvs[tris].astype(np.float64),
+        np.repeat(data.tri_material[sel][:, None, None], 3, axis=1).astype(np.float64),
+    ], axis=2)
+
+
+def _preview_soup(obj, data, us):
+    """Clipped triangle soup in the part's local space, built the way P2M builds it in game."""
+    planes = local_planes(obj)
+    rule = fix_rule(obj)
+    if rule is None:
+        soup = _soup(data, slice(None), data.positions.astype(np.float64) / us, data.normals.astype(np.float64))
+        return clipping.clip_all(soup, [((n.x, n.y, n.z), d) for n, d in planes])
+
+    # P2M turns these models in game (core/modelfix.py)
+    scale = np.array(obj.scale, dtype=np.float64)
+    safe = np.where(np.abs(scale) > 1e-9, scale, 1e-9)
+    p2m_clips = None
+    out = []
+    for sub in np.unique(data.tri_submesh):
+        sel = data.tri_submesh == sub
+        F, s, C = modelfix.submesh_transform(rule, int(sub), scale, obj.p2m.model_holo)
+        # Blender applies the object scale itself, so the mesh holds S^-1 F diag(s)
+        m = (F * s[None, :]) / safe[:, None]
+        try:
+            m_normals = np.linalg.inv(m).T
+        except np.linalg.LinAlgError:
+            m_normals = m
+        soup = _soup(data, sel, data.positions.astype(np.float64) @ m.T / us,
+                     data.normals.astype(np.float64) @ m_normals.T)
+        if np.allclose(F @ C, np.eye(3)):
+            sub_planes = [((n.x, n.y, n.z), d) for n, d in planes]
+        else:
+            # P2M clips this submesh with a turned plane
+            if p2m_clips is None:
+                p2m_clips = export_clips(planes, Vector(safe), us)
+            sub_planes = []
+            for n, d in p2m_clips:
+                w = us * safe * (F @ C @ np.asarray(n))
+                length = np.linalg.norm(w)
+                if length > 1e-12:
+                    sub_planes.append((tuple(w / length), d / length))
+        out.append(clipping.clip_all(soup, sub_planes))
+    return np.concatenate(out) if out else np.zeros((0, 3, 9))
+
+
 def rebuild(obj, refresh_bodygroups=False, force=False):
     """(Re)builds a model part's preview mesh when its inputs changed."""
     if not obj.p2m.is_model_part or obj.as_pointer() in _building:
@@ -297,15 +373,7 @@ def _rebuild(obj, refresh_bodygroups, force):
         me = bpy.data.meshes.new(MESH_PREFIX + obj.name)
         obj.data = me
 
-    us = props.unit_scale()
-    tris = data.triangles
-    soup = np.concatenate([
-        data.positions[tris].astype(np.float64) / us,
-        data.normals[tris].astype(np.float64),
-        data.uvs[tris].astype(np.float64),
-        np.repeat(data.tri_material[:, None, None], 3, axis=1).astype(np.float64),
-    ], axis=2) if len(tris) else np.zeros((0, 3, 9))
-    soup = clipping.clip_all(soup, [((n.x, n.y, n.z), d) for n, d in local_planes(obj)])
+    soup = _preview_soup(obj, data, props.unit_scale())
     mat_index = soup[:, 0, 8].round().astype(np.int32) if len(soup) else np.zeros(0, np.int32)
 
     _fill_mesh(me, soup[:, :, :8], mat_index, obj.p2m.model_flat)

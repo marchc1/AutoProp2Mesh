@@ -163,6 +163,8 @@ def on_depsgraph_update(scene, depsgraph):
                 continue
             touched.append(obj)
             entity_touched |= obj.p2m.is_entity
+            if obj.p2m.is_model_part and modelparts.fix_rule(obj) is not None:
+                modelparts.queue(obj)   # P2M's turn depends on the scale
     if not touched:
         return
     if entity_touched:

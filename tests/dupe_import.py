@@ -29,7 +29,7 @@ def check(cond, msg):
 
 import autoprop2mesh as addon
 from autoprop2mesh import content, entities, export, importer, modelparts, sync
-from autoprop2mesh.core import ad2, dupe, p2m
+from autoprop2mesh.core import ad2, clipping, dupe, p2m, studiomdl
 
 addon.register()
 print("Blender", bpy.app.version_string)
@@ -186,9 +186,9 @@ def compare(before, after, label, tol=2e-3):
                 if not close(want, got, tol * 10):
                     bad.append(where + " model part %s misplaced" % pb.model)
                     continue
-                if (pb.bodygroup, pb.flat, pb.vinside) != (pa.bodygroup, pa.flat, pa.vinside):
+                if (pb.bodygroup, pb.flat, pb.vinside, pb.holo) != (pa.bodygroup, pa.flat, pa.vinside, pa.holo):
                     bad.append(where + " model part %s flags %r -> %r" % (
-                        pb.model, (pb.bodygroup, pb.flat, pb.vinside), (pa.bodygroup, pa.flat, pa.vinside)))
+                        pb.model, (pb.bodygroup, pb.flat, pb.vinside, pb.holo), (pa.bodygroup, pa.flat, pa.vinside, pa.holo)))
                 if len(pb.clips) != len(pa.clips):
                     bad.append(where + " model part %s clips %d -> %d" % (pb.model, len(pb.clips), len(pa.clips)))
                     continue
@@ -327,6 +327,99 @@ synth2 = os.path.join(S, "synth2.txt")
 export_all(synth2)
 ents_synth2, _ = read(synth2)
 compare(ents_synth, ents_synth2, "controller frame")
+
+# --- models P2M turns in game (cl_modelfixer.lua) -----------------------
+print("\n== turned models")
+
+
+def rodrigues(axis, degrees):
+    """Source's MatrixBuildRotationAboutAxis."""
+    x, y, z = np.asarray(axis, dtype=np.float64) / np.linalg.norm(axis)
+    c, s = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+    return np.array([[x * x + (1 - x * x) * c, x * y * (1 - c) - z * s, z * x * (1 - c) + y * s],
+                     [x * y * (1 - c) + z * s, y * y + (1 - y * y) * c, y * z * (1 - c) - x * s],
+                     [z * x * (1 - c) - y * s, y * z * (1 - c) + x * s, z * z + (1 - z * z) * c]])
+
+
+def p2m_model_verts(model, pos, ang, scale, clips, holo, fix):
+    """Port of getVertsFromMDL. fix: None, "generic", "forward" or the submeshes the special fixer turns."""
+    data = studiomdl.load(content.read, model, [])
+    R = np.array(part_matrix((0, 0, 0), ang))[:3, :3]
+    rotated = rodrigues(R[:, 2], 90) @ R                       # rotated:RotateAroundAxis(rotated:Up(), 90)
+    if fix is not None:
+        partscale = np.array((scale[1], scale[0], scale[2]) if holo else (scale[0], scale[2], scale[1]))
+        a90 = np.array(part_matrix((0, 0, 0), (0, -90, 0)))[:3, :3]
+        clips = [(a90 @ np.asarray(n), d, np.asarray(n)) for n, d in clips]
+    else:
+        partscale = np.asarray(scale)
+        clips = [(np.asarray(n), d, np.asarray(n)) for n, d in clips]
+    out = []
+    for sub in np.unique(data.tri_submesh):
+        soup = data.positions[data.triangles[data.tri_submesh == sub]].astype(np.float64)
+        rot, diff = R, False
+        if fix == "generic":
+            rot = rotated
+        elif fix == "forward":
+            rot, diff = rodrigues(rotated[:, 0], 90) @ rotated, True
+        elif fix is not None:
+            rot, diff = (rotated, False) if sub in fix else (R, True)
+        soup = soup * (np.asarray(scale) if diff else partscale)
+        for n, d, no in clips:
+            soup = clipping.clip(soup, no if diff else n, d)
+        out.append(soup.reshape(-1, 3) @ rot.T + np.asarray(pos))
+    return np.concatenate(out)
+
+
+def nearest(a, b):
+    return max(np.min(np.linalg.norm(b - p, axis=1)) for p in a) if len(a) and len(b) else np.inf
+
+
+fs = content.get_fs()
+cases = [("models/props_lab/tpswitch.mdl", "generic")]
+crank = "models/props_mining/diesel_generator_crank.mdl"
+if fs.exists(crank):
+    cases.append((crank, "forward"))
+wheel_b = sorted(fs.list_files("models/sprops/trans/wheel_b/", ".mdl"))
+if wheel_b:
+    cases.append((wheel_b[0], (1,)))
+print("   ", [c[0] for c in cases])
+entries = {}
+for i, (model, _fix) in enumerate(cases):
+    for holo in (False, True):
+        entries[len(entries) + 1] = {
+            "holo" if holo else "prop": model, "pos": ad2.Vector(40 * len(entries), 10, 5),
+            "ang": ad2.Angle(15, 30 + 20 * i, -40), "scale": ad2.Vector(1.3, 0.6, 0.9),
+            "clips": [{"n": ad2.Vector(0.8, 0.5, 0.3), "d": 0.5}]}
+blob = p2m.gmod_lzma.compress(p2m._gmod_json([entries[k] for k in sorted(entries)]).encode())
+turned = os.path.join(S, "turned.txt")
+with open(turned, "wb") as f:
+    f.write(ad2.encode({"Entities": {1: {
+        "Class": "sent_prop2mesh", "Model": "models/p2m/cube.mdl",
+        "PhysicsObjects": {0: {"Pos": ad2.Vector(), "Angle": ad2.Angle()}},
+        "EntityMods": {"prop2mesh": {1: {1: {"crc": "7", "uvs": 0, "bump": False, "col": {"r": 255, "g": 255, "b": 255, "a": 255},
+                                             "mat": "hunter/myplastic", "scale": ad2.Vector(1, 1, 1), "clips": {}}},
+                                     2: {"7": blob}}}}},
+        "HeadEnt": {"Index": 1, "Pos": ad2.Vector(), "Z": 0}}, {"name": "test"}))
+clear()
+ic, objects = importer.import_dupe(ctx, turned)
+ctx.view_layer.update()
+parts = sorted((o for o in bpy.data.objects if o.p2m.is_model_part), key=lambda o: o.matrix_world.translation.x)
+check(len(parts) == len(entries), "imported %d turned model parts" % len(parts))
+for obj, key in zip(parts, sorted(entries)):
+    e = entries[key]
+    holo = "holo" in e
+    model = e.get("holo") or e.get("prop")
+    fix = dict(cases)[model]
+    want = p2m_model_verts(model, e["pos"], e["ang"], e["scale"], [(e["clips"][0]["n"], e["clips"][0]["d"])], holo, fix)
+    got = np.array([obj.matrix_world @ v.co for v in obj.data.vertices])
+    err = max(nearest(got, want), nearest(want, got))
+    check(obj.p2m.model_holo == holo and err < 1e-3,
+          "%s %s previews like P2M builds it (err %.1e)" % (model.rsplit("/", 1)[-1], "holo" if holo else "prop", err))
+out = os.path.join(S, "turned2.txt")
+export_all(out)
+before, _ = read(turned)
+after, _ = read(out)
+compare(before, after, "turned models")
 
 # --- a real dupe --------------------------------------------------------
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []

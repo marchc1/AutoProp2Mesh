@@ -245,6 +245,13 @@ Hidden planes still cut their models and are exported. Planes you hide yourself 
 - **Flat Shading:** uses flat shading instead of the model's own normals.
 - **Render Inside:** also draws back faces.
 - **UVs:** with the controller's **UV Scale** at 0, a model part keeps the model's own texture mapping. With any other value it is box-projected like a mesh. This is the same as Prop2Mesh.
+- **Hologram Part:** exports the part as a Prop2Mesh hologram part instead of a prop part. Imported holograms have it ticked. It only matters for the models below.
+
+### Models Prop2Mesh turns
+
+Prop2Mesh turns some models 90° about their up axis when it builds them in game, for example many PHX, `props_combine` and `props_lab` models. The list comes from Prop2Mesh's `cl_modelfixer.lua`. The preview turns them the same way, so what you see is what you get in game. On those models an uneven scale is applied the way Prop2Mesh applies it, with two of its axes swapped, and this differs between prop and hologram parts.
+
+The list is read from your installed Prop2Mesh. If it isn't in your game content, these models preview unturned and the console says so.
 
 ---
 

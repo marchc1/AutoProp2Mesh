@@ -86,11 +86,14 @@ def _model_part(ic, spec, parent, uid):
     us = ic.unit_scale
     obj = modelparts.create_model_part(ic.context, model=spec.model, name=spec.name, collection=ic.collection,
                                        bodygroup=spec.bodygroup)
+    obj.p2m.model_holo = spec.holo
     obj.p2m.model_flat = spec.flat
     obj.p2m.render_inside = spec.vinside
     obj.parent = parent
     obj.matrix_basis = source_matrix(spec.pos, spec.ang, us, spec.scale)
     obj.p2m.controller_uid = uid
+    if modelparts.fix_rule(obj) is not None:
+        ic.clipped_parts.append(obj)   # turned models preview by their scale
     s = Vector(spec.scale)
     for n, d in spec.clips:
         # P2M clips live in the scaled model space (Source units), planes in the unscaled part space
@@ -99,7 +102,7 @@ def _model_part(ic, spec, parent, uid):
         point = Vector(c * d / ((sc if abs(sc) > 1e-9 else 1e-9) * us) for c, sc in zip(n, s))
         if local_n.length > 1e-12:
             modelparts.add_clip_plane(ic.context, obj, local_n, point, rebuild_part=False)
-    if spec.clips:
+    if spec.clips and obj not in ic.clipped_parts:
         ic.clipped_parts.append(obj)
     if obj.p2m.model_status:
         ic.stats["model_errors"] += 1

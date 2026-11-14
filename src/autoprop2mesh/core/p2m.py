@@ -50,7 +50,7 @@ class ModelPartSpec:
     pairs in the part's scaled local space; P2M keeps dot(v, n) >= d."""
 
     def __init__(self, name, model, pos, ang, scale=(1, 1, 1), clips=(), bodygroup=0,
-                 flat=False, vinside=False):
+                 flat=False, vinside=False, holo=False):
         self.name = name
         self.model = model
         self.pos = Vector(*pos)
@@ -60,6 +60,7 @@ class ModelPartSpec:
         self.bodygroup = int(bodygroup)
         self.flat = flat
         self.vinside = vinside
+        self.holo = holo
 
 
 class MeshPartSpec:
@@ -164,7 +165,7 @@ def build_partlist(parts):
     index = 0
     for part in parts:
         if isinstance(part, ModelPartSpec):
-            entry = {"prop": part.model, "pos": part.pos, "ang": part.ang}
+            entry = {"holo" if part.holo else "prop": part.model, "pos": part.pos, "ang": part.ang}
             if any(abs(c - 1.0) > 1e-6 for c in part.scale):
                 entry["scale"] = part.scale
             if part.clips:
@@ -455,7 +456,8 @@ def read_parts(blob, notes):
             out.append(ModelPartSpec(
                 name[:-4] if name.endswith(".mdl") else name, model, pos, ang, scale,
                 _clips(part.get("clips")) + _clips(part.get("iclips")),
-                int(_number(part.get("bodygroup"))), _number(part.get("vsmooth")) == 1, vinside))
+                int(_number(part.get("bodygroup"))), _number(part.get("vsmooth")) == 1, vinside,
+                holo=not part.get("prop")))
         elif part.get("objd") is not None:
             text = custom.get(_custom_key(part.get("objd")))
             if not isinstance(text, str):

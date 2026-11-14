@@ -107,7 +107,8 @@ def model_part_spec(obj, entity_frame_inv, unit_scale, warnings):
         obj.name, model,
         (loc.x * unit_scale, loc.y * unit_scale, loc.z * unit_scale),
         (math.degrees(e.y), math.degrees(e.z), math.degrees(e.x)),
-        tuple(scale), clips, obj.p2m.bodygroup_mask(), obj.p2m.model_flat, obj.p2m.render_inside)
+        tuple(scale), clips, obj.p2m.bodygroup_mask(), obj.p2m.model_flat, obj.p2m.render_inside,
+        obj.p2m.model_holo)
 
 
 def _visible(obj, context):

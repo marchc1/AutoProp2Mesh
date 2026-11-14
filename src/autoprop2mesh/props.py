@@ -114,6 +114,10 @@ class P2M_ObjectProps(bpy.types.PropertyGroup):
     is_model_part: BoolProperty(default=False)
     bodygroups: CollectionProperty(type=P2M_Bodygroup)
     pending_bodygroup: IntProperty(default=-1)  # imported mask, applied once the model's body groups are known
+    model_holo: BoolProperty(
+        name="Hologram Part", default=False,
+        description="Exported as a Prop2Mesh hologram part (holo) instead of a prop part. P2M scales some turned models differently for those",
+    )
     model_flat: BoolProperty(
         name="Flat Shading", default=False, update=_model_part_changed,
         description="Use flat shading instead of the model's normals (Prop2Mesh vsmooth)",
