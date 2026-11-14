@@ -210,6 +210,40 @@ ids = uvpreview._input_ids(mod.node_group)
 check(uvpreview._get_input(mod, ids["Box UV"]) is False, "uvs=0: model part keeps model UVs in preview")
 check(not sync.is_geometry(plane) and sync.resolve(plane)[1] is None or plane.p2m.is_clip_plane, "clip planes are not parts")
 
+# --- clip plane display setting ----------------------------------------------
+# msgbus doesn't fire headless, so active changes call the handler by hand
+vl = ctx.view_layer
+cut_tris = len(mp.data.polygons)
+vl.objects.active = mp
+scene.p2m.clip_display = "NONE"
+check(plane.hide_get() and plane2.hide_get(), "Hide All hides the clip planes")
+scene.p2m.clip_display = "ACTIVE"
+check(not plane.hide_get() and not plane2.hide_get(), "Active Part Only shows the active part's planes")
+vl.objects.active = A
+sync._on_active_changed()
+check(plane.hide_get() and plane2.hide_get(), "Active Part Only hides them when something else is active")
+vl.objects.active = plane2
+sync._on_active_changed()
+check(not plane.hide_get() and not plane2.hide_get(), "an active clip plane shows its part's planes")
+vl.objects.active = A
+sync._on_active_changed()
+mp.location.x += 7
+vl.update()
+modelparts.rebuild(mp, force=True)
+check(len(mp.data.polygons) == cut_tris, "hidden planes keep cutting a moved part (%d -> %d tris)" % (cut_tris, len(mp.data.polygons)))
+mp.location.x -= 7
+scene.p2m.clip_display = "ALL"
+check(not plane.hide_get() and not plane2.hide_get(), "Show All shows them again")
+plane2.hide_set(True)
+scene.p2m.clip_display = "NONE"
+scene.p2m.clip_display = "ALL"
+check(plane2.hide_get() and not plane.hide_get(), "a plane hidden by hand stays hidden")
+plane2.hide_set(False)
+# export below runs with the planes hidden
+scene.p2m.clip_display = "NONE"
+vl.update()
+modelparts.rebuild(mp, force=True)
+
 # --- export -------------------------------------------------------------
 specs, warnings = export.gather(ctx)
 print("  warnings:", warnings)

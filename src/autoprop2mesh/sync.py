@@ -121,6 +121,7 @@ def full_sync(scene=None):
         for obj in bpy.data.objects:
             if obj.library is None:
                 sync_object(obj, scene)
+        modelparts.update_clip_visibility()
     finally:
         _busy = False
 
@@ -190,9 +191,27 @@ def _safety_timer():
     return 1.5
 
 
+_msgbus_owner = object()
+
+
+def _on_active_changed():
+    try:
+        modelparts.update_clip_visibility()
+    except Exception as e:
+        print("AutoProp2Mesh clip display error:", e)
+
+
+def _subscribe():
+    # msgbus subscriptions are dropped when a file loads
+    bpy.msgbus.clear_by_owner(_msgbus_owner)
+    bpy.msgbus.subscribe_rna(key=(bpy.types.LayerObjects, "active"), owner=_msgbus_owner, args=(),
+                             notify=_on_active_changed)
+
+
 @bpy.app.handlers.persistent
 def on_load_post(*_args):
     materials.regenerate_solid_previews()
+    _subscribe()
     request_full_sync()
 
 
@@ -207,9 +226,15 @@ def register():
     bpy.app.handlers.undo_post.append(on_undo_redo)
     bpy.app.handlers.redo_post.append(on_undo_redo)
     bpy.app.timers.register(_safety_timer, first_interval=1.5, persistent=True)
+    _subscribe()
 
 
 def unregister():
+    bpy.msgbus.clear_by_owner(_msgbus_owner)
+    try:
+        modelparts.restore_clip_visibility()
+    except Exception as e:
+        print("AutoProp2Mesh:", e)
     for lst, fn in ((bpy.app.handlers.depsgraph_update_post, on_depsgraph_update),
                     (bpy.app.handlers.load_post, on_load_post),
                     (bpy.app.handlers.undo_post, on_undo_redo),

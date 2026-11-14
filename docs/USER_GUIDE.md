@@ -230,6 +230,16 @@ If the model has body groups (for example the HL2 ammo crates' "ammo" group), th
 
 As in Prop2Mesh, cuts are left open, not capped. In Blender's default view you can see the inside walls through the cut.
 
+**Clip Planes** in the **P2M** sidebar tab picks which planes the viewport shows:
+
+| Setting | Shows |
+|---|---|
+| **Show All** (default) | Every clip plane |
+| **Active Part Only** | Only the planes of the active model part, or of the part the active plane cuts |
+| **Hide All** | No clip planes, except the active object if it's a plane |
+
+Hidden planes still cut their models and are exported. Planes you hide yourself (H) stay hidden when you switch back to **Show All**.
+
 ### Shading and UVs
 
 - **Flat Shading:** uses flat shading instead of the model's own normals.

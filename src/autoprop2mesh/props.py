@@ -54,6 +54,11 @@ def _part_changed(self, context):
     sync.request_full_sync(immediate=True)
 
 
+def _clip_display_changed(self, context):
+    from . import modelparts
+    modelparts.update_clip_visibility(context)
+
+
 def _unit_scale_changed(self, context):
     from . import entities, sync
     entities.refresh_all_models(context.scene)
@@ -116,6 +121,7 @@ class P2M_ObjectProps(bpy.types.PropertyGroup):
 
     # -- clip plane (child of a model part) ------------------------------
     is_clip_plane: BoolProperty(default=False)
+    clip_auto_hidden: BoolProperty(default=False)  # hidden by the Clip Planes display setting, not by hand
 
     # -- part -------------------------------------------------------------
     controller_uid: IntProperty(
@@ -165,9 +171,21 @@ class P2M_SceneProps(bpy.types.PropertyGroup):
         update=_unit_scale_changed,
         description="1 Blender unit = this many Source (Hammer) units",
     )
+    clip_display: EnumProperty(
+        name="Clip Planes",
+        items=(
+            ("ALL", "Show All", "Show every clip plane in the viewport"),
+            ("ACTIVE", "Active Part Only",
+             "Only show the clip planes of the active model part, or of the part the active clip plane cuts"),
+            ("NONE", "Hide All", "Hide clip planes in the viewport. The active object stays visible. "
+                                 "Hidden planes still cut their models and are exported"),
+        ),
+        default="ALL", update=_clip_display_changed,
+        description="Which clip planes the viewport shows",
+    )
 
 
-classes = (P2M_Controller, P2M_Bodygroup, P2M_ObjectProps, P2M_SceneProps)
+classes =(P2M_Controller, P2M_Bodygroup, P2M_ObjectProps, P2M_SceneProps)
 
 
 def register():

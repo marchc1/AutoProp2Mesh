@@ -53,9 +53,55 @@ def clip_plane_objects(part):
     return [c for c in part.children if c.p2m.is_clip_plane]
 
 
+def update_clip_visibility(context=None):
+    """Applies the scene's Clip Planes display setting to the view layer."""
+    context = context or bpy.context
+    scene = getattr(context, "scene", None)
+    view_layer = getattr(context, "view_layer", None)
+    if scene is None or view_layer is None:
+        return
+    mode = scene.p2m.clip_display
+    active = view_layer.objects.active
+    shown = None
+    if active is not None:
+        shown = active.parent if active.p2m.is_clip_plane else active
+    for obj in view_layer.objects:
+        if not obj.p2m.is_clip_plane or obj.library is not None:
+            continue
+        if mode == "ALL" or obj == active:
+            want_hidden = False
+        elif mode == "ACTIVE":
+            want_hidden = shown is None or obj.parent != shown
+        else:
+            want_hidden = True
+        hidden = obj.hide_get(view_layer=view_layer)
+        if want_hidden and not hidden:
+            obj.hide_set(True, view_layer=view_layer)
+            obj.p2m.clip_auto_hidden = True
+        elif not want_hidden and hidden and obj.p2m.clip_auto_hidden:
+            obj.hide_set(False, view_layer=view_layer)
+            obj.p2m.clip_auto_hidden = False
+        elif not hidden and obj.p2m.clip_auto_hidden:
+            obj.p2m.clip_auto_hidden = False   # unhidden by hand
+
+
+def restore_clip_visibility():
+    """Unhides every clip plane the display setting hid."""
+    for scene in bpy.data.scenes:
+        for view_layer in scene.view_layers:
+            for obj in view_layer.objects:
+                if obj.p2m.is_clip_plane and obj.p2m.clip_auto_hidden and obj.library is None:
+                    obj.hide_set(False, view_layer=view_layer)
+                    obj.p2m.clip_auto_hidden = False
+
+
 def plane_in_part_space(part, plane_obj):
     """(unit normal, distance) of a clip plane in the part's local space."""
-    m = part.matrix_world.inverted() @ plane_obj.matrix_world
+    if plane_obj.parent == part and plane_obj.parent_type == "OBJECT" and not plane_obj.constraints:
+        # local transform, hidden planes might not get their world matrix updated
+        m = plane_obj.matrix_parent_inverse @ plane_obj.matrix_basis
+    else:
+        m = part.matrix_world.inverted() @ plane_obj.matrix_world
     normal = (m.to_3x3().inverted().transposed() @ Vector((0.0, 0.0, 1.0)))
     if normal.length < 1e-12:
         return None

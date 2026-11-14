@@ -29,6 +29,7 @@ class P2M_PT_main(bpy.types.Panel):
         row.operator("object.p2m_add_entity", icon="ADD", text="Add Entity")
         row.operator("object.p2m_add_model_part", icon="MESH_ICOSPHERE", text="Add Model Part")
         layout.prop(context.scene.p2m, "unit_scale", text="Units / BU")
+        layout.prop(context.scene.p2m, "clip_display", text="Clip Planes")
         shading = getattr(context.space_data, "shading", None)
         if shading is not None and shading.type == "SOLID":
             row = layout.row(align=True)
